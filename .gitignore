@@ -57,3 +57,6 @@ target/
 # Virtualenv
 bin/
 include/
+
+#Program output
+*.csv

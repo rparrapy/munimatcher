@@ -6,6 +6,7 @@
 import dataset
 from fuzzywuzzy import fuzz
 from unidecode import unidecode
+from unicodewriter import UnicodeWriter
 
 DOUBT_THRESHOLD = 85
 SUGGESTION_THRESHOLD = 49
@@ -14,6 +15,8 @@ SUGGESTION_THRESHOLD = 49
 db = dataset.connect('postgresql://postgres:postgres@localhost:5432/playdb')
 
 contratos = db.query("select distinct convocante from contrato where convocante like 'MUNICIPALIDAD%' order by convocante")
+departamentos = [d['departamento'] for d in db.query("select distinct departamento from distrito order by departamento")]
+fixes = {u'ÐEEMBUCU': u'ÑEEMBUCU'}
 
 best_match = {}
 options = {}
@@ -27,6 +30,7 @@ for contrato in contratos:
     for d in db['distrito']:
         distrito = d['nombre'].strip()
         departamento = d['departamento'].strip()
+        departamento = fixes.get(departamento) if fixes.get(departamento) else departamento
         score = fuzz.ratio(unidecode(municipio), unidecode(distrito))
         value = (municipio, distrito, departamento, score)
         if score > highest_score:
@@ -45,11 +49,23 @@ for municipio in best_match.keys():
         options[municipio] = sorted(options[municipio], key=lambda option: option[-1], reverse=True)
         for i, opt in enumerate(options[municipio]):
             print u'%s) Distrito: %s Departamento: %s Similaridad: %s' % ((i + 1,) + opt[1:])
+        print u'%s) Ninguno de los anteriores. Seleccione el departamento de correspondiente de la siguiente lista:' % (len(options[municipio]) + 1)
         user_pick = input()
-        best_match[municipio] = options[municipio][user_pick - 1]
+        if user_pick == len(options[municipio]) + 1:
+            for i, d in enumerate(departamentos):
+                print  u'%s) Departamento: %s' % (i + 1, d)
+            user_pick = input()
+            best_match[municipio] = (municipio, None, departamentos[user_pick - 1], None)
+        else:
+            best_match[municipio] = options[municipio][user_pick - 1]
     result.append((municipio, best_match[municipio][2]))
 
-for r in result:
-    print u'La Municipalidad de %s corresponde al departamento de %s' % r
+# for r in result:
+#     print u'La Municipalidad de %s corresponde al departamento de %s' % r
 
+with open('municipalidades.csv','w') as out:
+    csv_out=UnicodeWriter(out)
+    csv_out.writerow(['municipio','departamento'])
+    for row in result:
+        csv_out.writerow(row)
 
